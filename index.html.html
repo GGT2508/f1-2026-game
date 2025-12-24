@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>F1 2026 Prediction Game (ABS Winner Scoring)</title>
+
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; line-height: 1.25; }
+    h1 { margin: 0 0 6px; }
+    h2 { margin: 16px 0 8px; }
+    .muted { opacity: .75; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 14px; padding: 12px; min-width: 320px; flex: 1; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; font-size: 12px; opacity: .85; margin: 8px 0 4px; }
+    input, select, button, textarea {
+      font: inherit; padding: 8px; border-radius: 12px;
+      border: 1px solid rgba(127,127,127,.35); width: 100%; box-sizing: border-box;
+    }
+    textarea { min-height: 110px; }
+    button { cursor: pointer; }
+    .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btnrow > button { width: auto; padding: 8px 12px; }
+    button.primary { border: 0; background: #2b6; color: #071; font-weight: 900; }
+    button.ghost { background: transparent; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid rgba(127,127,127,.35); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid rgba(127,127,127,.25); padding: 6px 6px; font-size: 13px; text-align: left; }
+    th { position: sticky; top: 0; backdrop-filter: blur(6px); }
+    .right { text-align: right; }
+    .small { font-size: 12px; }
+    .warn { color: #b80; }
+    .ok { color: #2b6; }
+    .win { font-weight: 900; }
+    .winTag { display:inline-block; padding:2px 10px; border-radius:999px; border:1px solid rgba(127,127,127,.35); font-size:12px; }
+    .tieTag { opacity:.75; }
+
+    body.compact .card { padding: 10px; }
+    body.compact textarea { min-height: 80px; }
+    body.compact th, body.compact td { font-size: 12px; }
+
+    @media (max-width: 720px) {
+      body { margin: 12px; }
+      .card { min-width: unset; }
+      .grid2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>F1 2026 Prediction Game</h1>
+  <div class="muted">
+    Winner scoring: <b>ABS</b> (race/season score = <span class="mono">-Σ|delta|</span>).
+    Delta per driver is your rule: <span class="mono">actualPts - predictedPts</span> (DNF/DSQ ⇒ actualPts = 0).
+    Excel import loads frozen lists from <span class="mono">GEORGE FROZEN LIST</span> and <span class="mono">RICHARD FROZEN LIST</span>.
+    Missing drivers in RESULTS ⇒ auto DNF/DSQ.
+  </div>
+
+  <div id="leaderBanner" class="card" style="margin-top:12px;">
+    <div style="font-size:14px; opacity:.8;">CURRENT LEADER (cumulative ABS score)</div>
+    <div id="leaderText" style="font-size:28px; font-weight:950; margin-top:4px;">—</div>
+    <div id="leaderSub" class="muted" style="margin-top:6px;">—</div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="grid2">
+        <div>
+          <label>Player A name</label>
+          <input id="playerAName" />
+        </div>
+        <div>
+          <label>Player B name</label>
+          <input id="playerBName" />
+        </div>
+      </div>
+
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="primary" id="saveAllBtn">Save</button>
+        <button class="ghost" id="toggleLockBtn">Lock frozen lists</button>
+        <button class="ghost" id="toggleCompactBtn">Compact mode</button>
+        <button class="ghost" id="resetBtn">Reset (clear local data)</button>
+      </div>
+
+      <h2 style="margin-top:16px;">Excel upload</h2>
+      <div class="muted small">
+        Expected sheets:
+        <span class="mono">GEORGE FROZEN LIST</span>, <span class="mono">RICHARD FROZEN LIST</span>,
+        <span class="mono">RESULTS</span>, optional <span class="mono">RACES</span>.
+      </div>
+      <label>Choose .xlsx</label>
+      <input id="excelFile" type="file" accept=".xlsx,.xlsm,.xlsb,.xls" />
+      <div class="btnrow" style="margin-top:10px;">
+        <button id="importExcelBtn">Import from Excel</button>
+        <button class="ghost" id="clearImportStatusBtn">Clear status</button>
+      </div>
+      <div id="importStatus" class="small muted" style="margin-top:8px;"></div>
+
+      <h2 style="margin-top:16px;">Import / Export (JSON)</h2>
+      <div class="btnrow">
+        <button id="exportBtn">Export JSON</button>
+        <button id="importBtn">Import JSON</button>
+      </div>
+      <label>Paste JSON here (for import) or copy exported JSON</label>
+      <textarea id="jsonBox" class="mono" placeholder='{"version":"5.0",...}'></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Frozen lists</h2>
+      <div class="muted small">Format: <span class="mono">pos,name,abbr</span>. Matching is by abbreviation.</div>
+
+      <div class="row">
+        <div style="flex:1; min-width:320px;">
+          <div class="pill" id="pillA">Player A</div>
+          <label>Frozen list</label>
+          <textarea id="driversA" class="mono"></textarea>
+        </div>
+        <div style="flex:1; min-width:320px;">
+          <div class="pill" id="pillB">Player B</div>
+          <label>Frozen list</label>
+          <textarea id="driversB" class="mono"></textarea>
+        </div>
+      </div>
+
+      <div class="muted small">
+        <ul style="margin:8px 0 0 18px;">
+          <li>Must be 22 drivers per list, positions 1–22 unique.</li>
+          <li>Abbreviations must be unique per list.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>Races</h2>
+      <div class="grid2">
+        <div>
+          <label>Race name</label>
+          <input id="raceName" placeholder="Bahrain GP" />
+        </div>
+        <div>
+          <label>Location (optional)</label>
+          <input id="raceLoc" placeholder="Sakhir" />
+        </div>
+      </div>
+
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="primary" id="addRaceBtn">Add race</button>
+        <button class="ghost" id="deleteRaceBtn">Delete selected race</button>
+      </div>
+
+      <label style="margin-top:10px;">Select race</label>
+      <select id="raceSelect"></select>
+      <div id="raceMeta" class="muted small" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Enter race results (optional)</h2>
+      <div class="muted small">
+        Manual entry also supports auto DNF/DSQ: missing drivers from finish list are treated as DNF/DSQ.
+      </div>
+
+      <label>Finishing order (one per line): <span class="mono">pos,abbr</span> (or just abbr)</label>
+      <textarea id="resultsBox" class="mono" placeholder="1,VER&#10;2,NOR&#10;3,LEC&#10;..."></textarea>
+
+      <div class="btnrow" style="margin-top:10px;">
+        <button class="primary" id="saveRaceResultsBtn">Save results for this race</button>
+        <button class="ghost" id="autoFillHelperBtn">Helper: abbreviations only → pos,abbr</button>
+        <button class="ghost" id="parseClassificationBtn">Parse classification text</button>
+      </div>
+
+      <div id="resultWarnings" class="small" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Scoreboard (ABS winner scoring)</h2>
+    <div class="row" style="margin-top:8px;">
+      <div style="min-width:260px;"><div class="pill" id="totalA">—</div></div>
+      <div style="min-width:260px;"><div class="pill" id="totalB">—</div></div>
+    </div>
+
+    <h2 style="margin-top:14px;">Per-race ABS totals</h2>
+    <div class="muted small">Race ABS score = <span class="mono">-Σ|delta|</span>. Closer to 0 is better.</div>
+
+    <div style="overflow:auto; max-height: 340px; margin-top:10px;">
+      <table id="raceTable">
+        <thead>
+          <tr>
+            <th>Race</th>
+            <th class="right"><span id="hdrARace">GEORGE</span> (race)</th>
+            <th class="right"><span id="hdrBRace">RICHARD</span> (race)</th>
+            <th class="right"><span id="hdrACum">GEORGE</span> (cum)</th>
+            <th class="right"><span id="hdrBCum">RICHARD</span> (cum)</th>
+            <th>Winner</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h2 style="margin-top:14px;">Driver breakdown (selected race)</h2>
+    <div class="muted small">
+      Shows finish (or DNF/DSQ), predicted position, and <b>delta</b> (= actualPts - predictedPts). (Not ABS.)
+    </div>
+    <div style="overflow:auto; max-height: 420px; margin-top:10px;">
+      <table id="breakdownTable">
+        <thead>
+          <tr>
+            <th>Driver</th>
+            <th class="right">Finish</th>
+            <th class="right">A pred</th>
+            <th class="right">A delta</th>
+            <th class="right">B pred</th>
+            <th class="right">B delta</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div id="mismatchBox" class="small muted" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- Excel reader -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+  (() => {
+    const STORAGE_KEY = "f1-2026-prediction-game.v5";
+
+    // Prefill (used only on first load OR reset)
+    const PREFILL = {
+      players: { A: "GEORGE", B: "RICHARD" },
+      frozen: {
+        A: [
+          { pos: 1,  name: "PIERRE GASLY",        abbr: "GAS" },
+          { pos: 2,  name: "VALTERI BOTTAS",      abbr: "BOT" },
+          { pos: 3,  name: "GEORGE RUSSELL",      abbr: "RUS" },
+          { pos: 4,  name: "ARVID LINDBLAD",      abbr: "LIN" },
+          { pos: 5,  name: "ESTBAN OCON",         abbr: "OCO" },
+          { pos: 6,  name: "FRANCO COLAPINTO",    abbr: "COL" },
+          { pos: 7,  name: "LANDO NORRIS",        abbr: "NOR" },
+          { pos: 8,  name: "CHARLES LECLERS",     abbr: "LEC" },
+          { pos: 9,  name: "NICO HULKENBERG",     abbr: "HUL" },
+          { pos: 10, name: "CARLOS SAINZ",        abbr: "SAI" },
+          { pos: 11, name: "OSCAR PIASTRI",       abbr: "PIA" },
+          { pos: 12, name: "FERNANDO ALONSO",     abbr: "ALO" },
+          { pos: 13, name: "GABRIEL BORTOLETO",   abbr: "BOR" },
+          { pos: 14, name: "LANCE STROLL",        abbr: "STR" },
+          { pos: 15, name: "ALEX ALBON",          abbr: "ALB" },
+          { pos: 16, name: "OLIVER BEARMAN",      abbr: "BER" },
+          { pos: 17, name: "KIMI ANTONELLI",      abbr: "ANT" },
+          { pos: 18, name: "MAX VERSTAPPEN",      abbr: "VER" },
+          { pos: 19, name: "LIAM LAWSON",         abbr: "LAW" },
+          { pos: 20, name: "LEWIS HAMILTON",      abbr: "HAM" },
+          { pos: 21, name: "ISACK HADJAR",        abbr: "HAR" },
+          { pos: 22, name: "SERGIO PEREZ",        abbr: "PER" },
+        ],
+        B: [
+          { pos: 1,  name: "OSCAR PIASTRI",       abbr: "PIA" },
+          { pos: 2,  name: "PIERRE GASLY",        abbr: "GAS" },
+          { pos: 3,  name: "FRANCO COLAPINTO",    abbr: "COL" },
+          { pos: 4,  name: "MAX VERSTAPPEN",      abbr: "VER" },
+          { pos: 5,  name: "ISACK HADJAR",        abbr: "HAR" },
+          { pos: 6,  name: "LANCE STROLL",        abbr: "STR" },
+          { pos: 7,  name: "ARVID LINDBLAD",      abbr: "LIN" },
+          { pos: 8,  name: "SERGIO PEREZ",        abbr: "PER" },
+          { pos: 9,  name: "ESTBAN OCON",         abbr: "OCO" },
+          { pos: 10, name: "VALTERI BOTTAS",      abbr: "BOT" },
+          { pos: 11, name: "OLIVER BEARMAN",      abbr: "BER" },
+          { pos: 12, name: "KIMI ANTONELLI",      abbr: "ANT" },
+          { pos: 13, name: "ALEX ALBON",          abbr: "ALB" },
+          { pos: 14, name: "CARLOS SAINZ",        abbr: "SAI" },
+          { pos: 15, name: "GEORGE RUSSELL",      abbr: "RUS" },
+          { pos: 16, name: "LEWIS HAMILTON",      abbr: "HAM" },
+          { pos: 17, name: "NICO HULKENBERG",     abbr: "HUL" },
+          { pos: 18, name: "CHARLES LECLERS",     abbr: "LEC" },
+          { pos: 19, name: "LIAM LAWSON",         abbr: "LAW" },
+          { pos: 20, name: "FERNANDO ALONSO",     abbr: "ALO" },
+          { pos: 21, name: "LANDO NORRIS",        abbr: "NOR" },
+          { pos: 22, name: "GABRIEL BORTOLETO",   abbr: "BOR" },
+        ]
+      }
+    };
+
+    const el = (id) => document.getElementById(id);
+
+    const stateDefault = () => ({
+      version: "5.0",
+      ui: { compact: false },
+      locks: { frozenLocked: true },
+      players: { A: { name: PREFILL.players.A }, B: { name: PREFILL.players.B } },
+      frozen: { A: PREFILL.frozen.A, B: PREFILL.frozen.B },
+      races: [],
+      selectedRaceId: null
+    });
+
+    let state = loadStateOrPrefill();
+    applyCompactClass();
+
+    function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+    function loadStateOrPrefill() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return stateDefault();
+        const s = JSON.parse(raw);
+
+        if (!s.ui) s.ui = { compact: false };
+        if (!s.locks) s.locks = { frozenLocked: true };
+        if (!s.players) s.players = { A:{name:PREFILL.players.A}, B:{name:PREFILL.players.B} };
+        if (!s.frozen) s.frozen = { A:PREFILL.frozen.A, B:PREFILL.frozen.B };
+        if (!Array.isArray(s.frozen.A) || s.frozen.A.length !== 22) s.frozen.A = PREFILL.frozen.A;
+        if (!Array.isArray(s.frozen.B) || s.frozen.B.length !== 22) s.frozen.B = PREFILL.frozen.B;
+        if (!s.races) s.races = [];
+        if (!s.selectedRaceId) s.selectedRaceId = s.races[0]?.id ?? null;
+
+        return s;
+      } catch {
+        return stateDefault();
+      }
+    }
+
+    // ===== helpers =====
+    function uuid() { return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16); }
+    function normAbbr(s) { return (s || "").toString().trim().toUpperCase(); }
+    function ptsFromPos(pos) { return 23 - pos; }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c])); }
+
+    function parseFrozen(text) {
+      const lines = (text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const list = [];
+      for (const line of lines) {
+        const parts = line.split(",").map(p => p.trim());
+        if (parts.length < 3) continue;
+        const pos = Number(parts[0]);
+        const name = parts.slice(1, parts.length - 1).join(",").trim();
+        const abbr = normAbbr(parts[parts.length - 1]);
+        if (!Number.isFinite(pos) || !abbr) continue;
+        list.push({ pos, name, abbr });
+      }
+      list.sort((a,b)=>a.pos-b.pos);
+      return list;
+    }
+
+    function validateFrozen(list) {
+      const errors = [];
+      if (list.length !== 22) errors.push(`Expected 22 drivers, got ${list.length}.`);
+      const posSet = new Set();
+      const abbrSet = new Set();
+      for (const d of list) {
+        if (!(d.pos >= 1 && d.pos <= 22)) errors.push(`Invalid position ${d.pos} for ${d.abbr || d.name}.`);
+        if (posSet.has(d.pos)) errors.push(`Duplicate position ${d.pos}.`);
+        posSet.add(d.pos);
+        if (!d.abbr) errors.push(`Missing abbreviation at position ${d.pos}.`);
+        if (abbrSet.has(d.abbr)) errors.push(`Duplicate abbreviation ${d.abbr}.`);
+        abbrSet.add(d.abbr);
+      }
+      return errors;
+    }
+
+    function parseFinishResults(text) {
+      const lines = (text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const finishMap = new Map(); // abbr->pos
+      for (const line of lines) {
+        const parts = line.split(",").map(p => p.trim()).filter(Boolean);
+        if (parts.length === 1) {
+          const abbr = normAbbr(parts[0]);
+          const pos = finishMap.size + 1;
+          if (abbr) finishMap.set(abbr, pos);
+        } else {
+          const pos = Number(parts[0]);
+          const abbr = normAbbr(parts[1]);
+          if (Number.isFinite(pos) && abbr) finishMap.set(abbr, pos);
+        }
+      }
+      return { finishMap };
+    }
+
+    function frozenMap(playerKey) {
+      const map = new Map();
+      for (const d of state.frozen[playerKey]) map.set(d.abbr, d.pos);
+      return map;
+    }
+
+    function allDriversUnion() {
+      const set = new Set();
+      for (const d of state.frozen.A) set.add(d.abbr);
+      for (const d of state.frozen.B) set.add(d.abbr);
+      return Array.from(set).sort();
+    }
+
+    function getRaceById(id) { return state.races.find(r => r.id === id) || null; }
+    function findRaceByName(name) {
+      const n = (name || "").trim().toUpperCase();
+      return state.races.find(r => (r.name || "").trim().toUpperCase() === n) || null;
+    }
+
+    function ensureRace(name, loc="") {
+      const existing = findRaceByName(name);
+      if (existing) return { race: existing, created: false };
+      const r = { id: uuid(), name: (name||"").trim(), loc: (loc||"").trim(), results: null };
+      state.races.push(r);
+      return { race: r, created: true };
+    }
+
+    // ===== scoring =====
+    // delta = actualPts - predictedPts; DNF/DSQ => actualPts=0
+    function delta(predPos, actualPosOrNull) {
+      const predPts = ptsFromPos(predPos);
+      const actualPts = (actualPosOrNull == null) ? 0 : ptsFromPos(actualPosOrNull);
+      return actualPts - predPts;
+    }
+
+    // ABS score = -Σ|delta|
+    function scoreRaceAbsForPlayer(race, playerKey) {
+      const pred = frozenMap(playerKey);
+      const finishMap = new Map(Object.entries(race.results?.finishMap || {}));
+      const dnfSet = new Set(race.results?.dnfSet || []);
+      let total = 0;
+
+      for (const [abbr, predPos] of pred.entries()) {
+        const isDNF = dnfSet.has(abbr) || !finishMap.has(abbr);
+        const actualPos = isDNF ? null : Number(finishMap.get(abbr));
+        total += -Math.abs(delta(predPos, actualPos));
+      }
+      return total;
+    }
+
+    function computeSeasonAbsTotals() {
+      let totalA = 0, totalB = 0;
+      for (const r of state.races) {
+        if (!r.results) continue;
+        totalA += scoreRaceAbsForPlayer(r, "A");
+        totalB += scoreRaceAbsForPlayer(r, "B");
+      }
+      return { totalA, totalB };
+    }
+
+    function breakdownForRace(race) {
+      const predA = frozenMap("A");
+      const predB = frozenMap("B");
+      const finishMap = new Map(Object.entries(race.results?.finishMap || {}));
+      const dnfSet = new Set(race.results?.dnfSet || []);
+      const drivers = allDriversUnion();
+
+      const rows = drivers.map(abbr => {
+        const isDNF = dnfSet.has(abbr) || !finishMap.has(abbr);
+        const finish = isDNF ? "DNF/DSQ" : String(finishMap.get(abbr));
+        const actualPos = isDNF ? null : Number(finishMap.get(abbr));
+
+        const aPredPos = predA.get(abbr);
+        const bPredPos = predB.get(abbr);
+
+        const aDelta = (aPredPos ? delta(aPredPos, actualPos) : null);
+        const bDelta = (bPredPos ? delta(bPredPos, actualPos) : null);
+
+        return { abbr, finish, aPredPos, aDelta, bPredPos, bDelta };
+      });
+
+      rows.sort((x,y)=>{
+        const fx = (x.finish === "DNF/DSQ") ? 999 : Number(x.finish);
+        const fy = (y.finish === "DNF/DSQ") ? 999 : Number(y.finish);
+        if (fx !== fy) return fx - fy;
+        return x.abbr.localeCompare(y.abbr);
+      });
+
+      return rows;
+    }
+
+    // ===== parsing messy classification =====
+    function parseClassificationFromText(raw) {
+      const known = new Set(allDriversUnion().map(a => a.toUpperCase()));
+      const tokens = (raw || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean);
+
+      const found = [];
+      const seen = new Set();
+      for (const t of tokens) {
+        if (t.length === 3 && /^[A-Z]{3}$/.test(t) && known.has(t) && !seen.has(t)) {
+          found.push(t);
+          seen.add(t);
+          if (found.length >= 22) break;
+        }
+      }
+      return found.map((abbr, i) => `${i+1},${abbr}`).join("\n");
+    }
+
+    // ===== UI helpers =====
+    function setImportStatus(html) { el("importStatus").innerHTML = html; }
+    function applyCompactClass() {
+      if (state.ui?.compact) document.body.classList.add("compact");
+      else document.body.classList.remove("compact");
+      el("toggleCompactBtn").textContent = state.ui?.compact ? "Normal mode" : "Compact mode";
+    }
+    function applyLockState() {
+      const locked = !!state.locks.frozenLocked;
+      el("driversA").disabled = locked;
+      el("driversB").disabled = locked;
+      el("toggleLockBtn").textContent = locked ? "Unlock frozen lists" : "Lock frozen lists";
+    }
+    function showWarnings(lines) {
+      const box = el("resultWarnings");
+      if (!lines.length) { box.innerHTML = ""; return; }
+      box.innerHTML = `<div class="warn"><b>Check these:</b><ul style="margin:6px 0 0 18px;">${lines.map(l=>`<li>${escapeHtml(l)}</li>`).join("")}</ul></div>`;
+    }
+
+    // ===== Excel import (READS BOTH FROZEN LIST SHEETS) =====
+    async function readExcelFile(file) {
+      const buf = await file.arrayBuffer();
+      return XLSX.read(buf, { type: "array" });
+    }
+
+    function importExcelWorkbook(workbook) {
+      const notes = [];
+      const sheetNames = workbook.SheetNames || [];
+
+      // Find sheet by exact name or case-insensitive match
+      function findSheet(name) {
+        if (sheetNames.includes(name)) return name;
+        const upper = name.toUpperCase();
+        return sheetNames.find(s => (s || "").toUpperCase() === upper) || null;
+      }
+
+      // Parse frozen list sheet (expects rows like: pos | name | abbr)
+      function parseFrozenSheet(sheetName) {
+  const ws = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+
+  const list = [];
+
+  for (const row of rows) {
+    if (!row || row.length === 0) continue;
+
+    // Case 1: Single-column CSV style: "1,PIERRE GASLY,GAS"
+    if (row.length === 1 && typeof row[0] === "string" && row[0].includes(",")) {
+      const parts = row[0].split(",").map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 3) {
+        const pos = Number(parts[0]);
+        const name = parts.slice(1, parts.length - 1).join(",").trim();
+        const abbr = (parts[parts.length - 1] || "").trim().toUpperCase();
+        if (Number.isFinite(pos) && abbr) list.push({ pos, name, abbr });
+      }
+      continue;
+    }
+
+    // Case 2: Multi-column style: pos | name | abbr
+    const pos = Number(row[0]);
+    if (!Number.isFinite(pos)) continue; // skip header/non-data rows
+
+    const name = (row[1] ?? "").toString().trim();
+
+    // abbr may be in col 2, but if not, try last cell
+    const abbrRaw = (row[2] ?? row[row.length - 1] ?? "").toString().trim();
+    const abbr = abbrRaw.toUpperCase();
+
+    if (!abbr) continue;
+    list.push({ pos, name, abbr });
+  }
+
+  list.sort((a, b) => a.pos - b.pos);
+  return list;
+}
+
+
+      // 1) Load frozen lists from workbook
+      const georgeSheet = findSheet("GEORGE FROZEN LIST");
+      const richardSheet = findSheet("RICHARD FROZEN LIST");
+
+      if (!georgeSheet) notes.push(`<span class="warn">Missing sheet: GEORGE FROZEN LIST</span>`);
+      if (!richardSheet) notes.push(`<span class="warn">Missing sheet: RICHARD FROZEN LIST</span>`);
+
+      if (georgeSheet) {
+        const listA = parseFrozenSheet(georgeSheet);
+        const errs = validateFrozen(listA);
+        if (errs.length) notes.push(`<span class="warn">GEORGE FROZEN LIST issues: ${escapeHtml(errs.join(" "))}</span>`);
+        else {
+          state.players.A.name = "GEORGE";
+          state.frozen.A = listA;
+          notes.push(`<span class="ok">Loaded GEORGE frozen list (22 drivers).</span>`);
+        }
+      }
+
+      if (richardSheet) {
+        const listB = parseFrozenSheet(richardSheet);
+        const errs = validateFrozen(listB);
+        if (errs.length) notes.push(`<span class="warn">RICHARD FROZEN LIST issues: ${escapeHtml(errs.join(" "))}</span>`);
+        else {
+          state.players.B.name = "RICHARD";
+          state.frozen.B = listB;
+          notes.push(`<span class="ok">Loaded RICHARD frozen list (22 drivers).</span>`);
+        }
+      }
+
+      // 2) Optional RACES ordering
+      let raceOrder = null;
+      const racesSheet = findSheet("RACES");
+      if (racesSheet) {
+        const ws = workbook.Sheets[racesSheet];
+        const arr = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+        raceOrder = arr.map(r => (r?.[0] ?? "").toString().trim()).filter(Boolean);
+        if (raceOrder.length) notes.push(`Found RACES sheet with ${raceOrder.length} entries.`);
+      }
+
+      // 3) RESULTS import
+      const resultsSheet = findSheet("RESULTS");
+      if (!resultsSheet) {
+        notes.push(`<span class="warn">No sheet named RESULTS found.</span>`);
+        setImportStatus(notes.join("<br/>"));
+        return;
+      }
+
+      const wsR = workbook.Sheets[resultsSheet];
+      const data = XLSX.utils.sheet_to_json(wsR, { header: 1, blankrows: false });
+
+      if (!data || data.length < 2) {
+        notes.push(`<span class="warn">RESULTS sheet looks empty.</span>`);
+        setImportStatus(notes.join("<br/>"));
+        return;
+      }
+
+      // Known drivers AFTER frozen list load:
+      const knownDrivers = allDriversUnion();
+      const knownSet = new Set(knownDrivers);
+
+      const headerRow = data[0] || [];
+      let updatedRaces = 0;
+      let createdRaces = 0;
+
+      // For diagnostics:
+      const unknownInResults = new Set();
+
+      for (let c = 0; c < headerRow.length; c++) {
+        const raceName = (headerRow[c] ?? "").toString().trim();
+        if (!raceName) continue;
+
+        const finishMap = new Map();
+        let anyData = false;
+
+        // Read down the column; cell expected like "pos,name,abbr"
+        for (let r = 1; r < Math.min(data.length, 500); r++) {
+          const cell = (data[r] && data[r][c]) ? data[r][c].toString().trim() : "";
+          if (!cell) continue;
+          anyData = true;
+
+          const parts = cell.split(",").map(s => s.trim());
+          if (parts.length >= 2) {
+            const pos = Number(parts[0]);
+            const abbr = normAbbr(parts[parts.length - 1]);
+            if (Number.isFinite(pos) && abbr) {
+              finishMap.set(abbr, pos);
+              if (!knownSet.has(abbr)) unknownInResults.add(abbr);
+            }
+          }
+        }
+
+        if (!anyData) continue;
+
+        // AUTO DNF: any known driver not present is DNF/DSQ
+        const dnfSet = [];
+        for (const abbr of knownDrivers) {
+          if (!finishMap.has(abbr)) dnfSet.push(abbr);
+        }
+
+        const existed = !!findRaceByName(raceName);
+        const ensured = ensureRace(raceName, "");
+        if (!existed && ensured.created) createdRaces++;
+
+        ensured.race.results = {
+          finishMap: Object.fromEntries(finishMap.entries()),
+          dnfSet
+        };
+
+        updatedRaces++;
+      }
+
+      if (raceOrder && raceOrder.length) {
+        const idx = new Map(raceOrder.map((n,i)=>[n.toUpperCase(), i]));
+        state.races.sort((a,b)=>{
+          const ia = idx.has((a.name||"").toUpperCase()) ? idx.get((a.name||"").toUpperCase()) : 9999;
+          const ib = idx.has((b.name||"").toUpperCase()) ? idx.get((b.name||"").toUpperCase()) : 9999;
+          if (ia !== ib) return ia - ib;
+          return (a.name||"").localeCompare(b.name||"");
+        });
+      }
+
+      if (!state.selectedRaceId && state.races.length) state.selectedRaceId = state.races[0].id;
+
+      notes.push(`<span class="ok">Imported/updated ${updatedRaces} races</span> (${createdRaces} newly created).`);
+      notes.push(`Auto DNF/DSQ ON: missing known drivers in a race column are treated as DNF/DSQ.`);
+
+      // Show mismatches
+      const mismatchLines = [];
+      if (unknownInResults.size) {
+        mismatchLines.push(`<span class="warn">Unknown abbreviations found in RESULTS (not in frozen lists):</span> <span class="mono">${escapeHtml(Array.from(unknownInResults).sort().join(", "))}</span>`);
+      } else {
+        mismatchLines.push(`<span class="ok">No unknown abbreviations found in RESULTS.</span>`);
+      }
+      el("mismatchBox").innerHTML = mismatchLines.join("<br/>");
+
+      setImportStatus(notes.join("<br/>"));
+    }
+
+    // ===== render =====
+    function render() {
+      // Names / pills
+      el("playerAName").value = state.players.A.name || "Player A";
+      el("playerBName").value = state.players.B.name || "Player B";
+      el("pillA").textContent = state.players.A.name || "Player A";
+      el("pillB").textContent = state.players.B.name || "Player B";
+
+      // Frozen lists (textareas)
+      el("driversA").value = state.frozen.A.slice().sort((a,b)=>a.pos-b.pos).map(d => `${d.pos},${d.name},${d.abbr}`).join("\n");
+      el("driversB").value = state.frozen.B.slice().sort((a,b)=>a.pos-b.pos).map(d => `${d.pos},${d.name},${d.abbr}`).join("\n");
+
+      // Header names
+      el("hdrARace").textContent = state.players.A.name || "GEORGE";
+      el("hdrBRace").textContent = state.players.B.name || "RICHARD";
+      el("hdrACum").textContent  = state.players.A.name || "GEORGE";
+      el("hdrBCum").textContent  = state.players.B.name || "RICHARD";
+
+      // Race select
+      const rs = el("raceSelect");
+      rs.innerHTML = "";
+      for (const r of state.races) {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.loc ? `${r.name} — ${r.loc}` : r.name;
+        rs.appendChild(opt);
+      }
+      if (!state.selectedRaceId && state.races.length) state.selectedRaceId = state.races[0].id;
+      rs.value = state.selectedRaceId || "";
+
+      const race = state.selectedRaceId ? getRaceById(state.selectedRaceId) : null;
+      el("raceMeta").textContent = race ? `Selected: ${race.name}${race.loc ? " ("+race.loc+")" : ""}` : "No race selected yet.";
+
+      // Fill results box for selected race
+      if (race && race.results) {
+        const finishMap = race.results.finishMap || {};
+        const sorted = Object.entries(finishMap)
+          .map(([abbr,pos]) => ({ abbr, pos: Number(pos) }))
+          .sort((a,b)=>a.pos-b.pos)
+          .map(x => `${x.pos},${x.abbr}`)
+          .join("\n");
+        el("resultsBox").value = sorted;
+      } else {
+        el("resultsBox").value = "";
+      }
+
+      // Totals + leader banner
+      const totals = computeSeasonAbsTotals();
+      const aName = state.players.A.name || "GEORGE";
+      const bName = state.players.B.name || "RICHARD";
+
+      el("totalA").textContent = `${aName} ABS Total: ${totals.totalA}`;
+      el("totalB").textContent = `${bName} ABS Total: ${totals.totalB}`;
+
+      let leaderTitle = "TIED";
+      let leaderSub = `${aName}: ${totals.totalA}  •  ${bName}: ${totals.totalB}`;
+      if (totals.totalA > totals.totalB) {
+        leaderTitle = `${aName} leads`;
+        leaderSub += `  •  Lead: ${totals.totalA - totals.totalB}`;
+      } else if (totals.totalB > totals.totalA) {
+        leaderTitle = `${bName} leads`;
+        leaderSub += `  •  Lead: ${totals.totalB - totals.totalA}`;
+      }
+      el("leaderText").textContent = leaderTitle;
+      el("leaderSub").textContent = leaderSub;
+
+      renderRaceTable();
+      renderBreakdown();
+
+      applyLockState();
+      applyCompactClass();
+      el("resultWarnings").innerHTML = "";
+    }
+
+    function renderRaceTable() {
+      const tbody = document.querySelector("#raceTable tbody");
+      tbody.innerHTML = "";
+
+      const aName = state.players.A.name || "GEORGE";
+      const bName = state.players.B.name || "RICHARD";
+
+      let cumA = 0, cumB = 0;
+      for (const r of state.races) {
+        let a = 0, b = 0;
+        if (r.results) {
+          a = scoreRaceAbsForPlayer(r, "A");
+          b = scoreRaceAbsForPlayer(r, "B");
+        }
+        cumA += a; cumB += b;
+
+        let winnerHtml = `<span class="winTag tieTag">—</span>`;
+        if (r.results) {
+          if (a > b) winnerHtml = `<span class="winTag">${escapeHtml(aName)}</span>`;
+          else if (b > a) winnerHtml = `<span class="winTag">${escapeHtml(bName)}</span>`;
+          else winnerHtml = `<span class="winTag tieTag">TIE</span>`;
+        }
+
+        const aClass = (r.results && a > b) ? "win" : "";
+        const bClass = (r.results && b > a) ? "win" : "";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="mono">${escapeHtml(r.name)}</span>${r.loc ? ` <span class="muted">(${escapeHtml(r.loc)})</span>` : ""}${r.results ? "" : ` <span class="warn">(no results)</span>`}</td>
+          <td class="right mono ${aClass}">${a}</td>
+          <td class="right mono ${bClass}">${b}</td>
+          <td class="right mono">${cumA}</td>
+          <td class="right mono">${cumB}</td>
+          <td>${winnerHtml}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderBreakdown() {
+      const tbody = document.querySelector("#breakdownTable tbody");
+      tbody.innerHTML = "";
+      const race = state.selectedRaceId ? getRaceById(state.selectedRaceId) : null;
+      if (!race || !race.results) return;
+
+      // Update header names
+      const ths = document.querySelectorAll("#breakdownTable thead th");
+      if (ths.length === 6) {
+        ths[2].textContent = `${state.players.A.name || "GEORGE"} pred`;
+        ths[3].textContent = `${state.players.A.name || "GEORGE"} delta`;
+        ths[4].textContent = `${state.players.B.name || "RICHARD"} pred`;
+        ths[5].textContent = `${state.players.B.name || "RICHARD"} delta`;
+      }
+
+      const rows = breakdownForRace(race);
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(r.abbr)}</td>
+          <td class="right">${escapeHtml(r.finish)}</td>
+          <td class="right">${r.aPredPos ?? "—"}</td>
+          <td class="right mono">${r.aDelta ?? "—"}</td>
+          <td class="right">${r.bPredPos ?? "—"}</td>
+          <td class="right mono">${r.bDelta ?? "—"}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // ===== events =====
+    el("saveAllBtn").addEventListener("click", () => {
+      state.players.A.name = el("playerAName").value.trim() || "Player A";
+      state.players.B.name = el("playerBName").value.trim() || "Player B";
+
+      if (!state.locks.frozenLocked) {
+        const a = parseFrozen(el("driversA").value);
+        const b = parseFrozen(el("driversB").value);
+
+        const errA = validateFrozen(a);
+        const errB = validateFrozen(b);
+        const warnings = [];
+        if (errA.length) warnings.push(`Player A list issues: ${errA.join(" ")}`);
+        if (errB.length) warnings.push(`Player B list issues: ${errB.join(" ")}`);
+        if (warnings.length) return alert(warnings.join("\n\n"));
+
+        state.frozen.A = a;
+        state.frozen.B = b;
+      }
+
+      saveState();
+      render();
+    });
+
+    el("toggleLockBtn").addEventListener("click", () => {
+      state.locks.frozenLocked = !state.locks.frozenLocked;
+      saveState();
+      render();
+    });
+
+    el("toggleCompactBtn").addEventListener("click", () => {
+      state.ui.compact = !state.ui.compact;
+      saveState();
+      applyCompactClass();
+    });
+
+    el("resetBtn").addEventListener("click", () => {
+      if (!confirm("This will clear all saved data for this app in your browser. Continue?")) return;
+      localStorage.removeItem(STORAGE_KEY);
+      state = stateDefault();
+      saveState();
+      render();
+      setImportStatus("");
+      el("mismatchBox").innerHTML = "";
+    });
+
+    el("exportBtn").addEventListener("click", () => {
+      el("jsonBox").value = JSON.stringify(state, null, 2);
+    });
+
+    el("importBtn").addEventListener("click", () => {
+      try {
+        const raw = el("jsonBox").value.trim();
+        if (!raw) return alert("Paste JSON into the box first.");
+        const parsed = JSON.parse(raw);
+        state = parsed;
+
+        if (!state.ui) state.ui = { compact: false };
+        if (!state.locks) state.locks = { frozenLocked: true };
+        if (!state.players) state.players = { A:{name:PREFILL.players.A}, B:{name:PREFILL.players.B} };
+        if (!state.frozen) state.frozen = { A:PREFILL.frozen.A, B:PREFILL.frozen.B };
+        if (!state.races) state.races = [];
+        if (!state.selectedRaceId) state.selectedRaceId = state.races[0]?.id ?? null;
+
+        saveState();
+        render();
+        alert("Imported successfully.");
+      } catch (e) {
+        alert("Import failed: " + (e?.message || String(e)));
+      }
+    });
+
+    el("addRaceBtn").addEventListener("click", () => {
+      const name = el("raceName").value.trim();
+      const loc = el("raceLoc").value.trim();
+      if (!name) return alert("Race name is required.");
+      const r = { id: uuid(), name, loc, results: null };
+      state.races.push(r);
+      state.selectedRaceId = r.id;
+      el("raceName").value = "";
+      el("raceLoc").value = "";
+      saveState();
+      render();
+    });
+
+    el("deleteRaceBtn").addEventListener("click", () => {
+      if (!state.selectedRaceId) return;
+      const race = getRaceById(state.selectedRaceId);
+      if (!race) return;
+      if (!confirm(`Delete race "${race.name}"?`)) return;
+      state.races = state.races.filter(r => r.id !== state.selectedRaceId);
+      state.selectedRaceId = state.races[0]?.id ?? null;
+      saveState();
+      render();
+    });
+
+    el("raceSelect").addEventListener("change", (e) => {
+      state.selectedRaceId = e.target.value || null;
+      saveState();
+      render();
+    });
+
+    el("autoFillHelperBtn").addEventListener("click", () => {
+      const raw = el("resultsBox").value.trim();
+      if (!raw) return alert("Paste abbreviations only (one per line), then click again.");
+      const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      const abbrs = lines.map(l => normAbbr(l.split(",").pop()));
+      el("resultsBox").value = abbrs.map((a,i)=>`${i+1},${a}`).join("\n");
+    });
+
+    el("parseClassificationBtn").addEventListener("click", () => {
+      const raw = el("resultsBox").value;
+      if (!raw.trim()) return alert("Paste the classification text into the finishing order box first.");
+      const parsed = parseClassificationFromText(raw);
+      if (!parsed.trim()) return alert("Could not detect abbreviations (VER/NOR/LEC…). Make sure abbreviations exist in pasted text.");
+      el("resultsBox").value = parsed;
+    });
+
+    // Manual save: auto DNF for missing drivers
+    el("saveRaceResultsBtn").addEventListener("click", () => {
+      const race = state.selectedRaceId ? getRaceById(state.selectedRaceId) : null;
+      if (!race) return alert("Create/select a race first.");
+
+      const { finishMap } = parseFinishResults(el("resultsBox").value);
+
+      const warnings = [];
+      const seenPos = new Set();
+      const seenAbbr = new Set();
+
+      for (const [abbr, pos] of finishMap.entries()) {
+        const p = Number(pos);
+        if (!(p >= 1 && p <= 22)) warnings.push(`Finish position out of range: ${abbr} -> ${pos}`);
+        if (seenPos.has(p)) warnings.push(`Duplicate finishing position ${p}.`);
+        seenPos.add(p);
+        if (seenAbbr.has(abbr)) warnings.push(`Duplicate driver in results: ${abbr}`);
+        seenAbbr.add(abbr);
+      }
+
+      const knownDrivers = allDriversUnion();
+      const knownSet = new Set(knownDrivers);
+
+      for (const abbr of finishMap.keys()) {
+        if (!knownSet.has(abbr)) warnings.push(`Unknown abbreviation in results: ${abbr}`);
+      }
+
+      showWarnings(warnings);
+      if (warnings.length && !confirm("There are warnings. Save anyway?")) return;
+
+      const dnfSet = [];
+      for (const abbr of knownDrivers) if (!finishMap.has(abbr)) dnfSet.push(abbr);
+
+      race.results = {
+        finishMap: Object.fromEntries(finishMap.entries()),
+        dnfSet
+      };
+
+      saveState();
+      render();
+    });
+
+    // Excel import
+    el("importExcelBtn").addEventListener("click", async () => {
+      const file = el("excelFile").files && el("excelFile").files[0];
+      if (!file) return alert("Choose an Excel file first.");
+      try {
+        setImportStatus("Reading file…");
+        const wb = await readExcelFile(file);
+        importExcelWorkbook(wb);
+        saveState();
+        render();
+      } catch (e) {
+        setImportStatus(`<span class="warn">Excel import failed:</span> ${escapeHtml(e?.message || String(e))}`);
+      }
+    });
+
+    el("clearImportStatusBtn").addEventListener("click", () => setImportStatus(""));
+
+    // Start
+    render();
+  })();
+  </script>
+</body>
+</html>
